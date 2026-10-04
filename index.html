@@ -176,11 +176,7 @@ button { font-family:inherit; }
     }
   }
 
-  function makeCode() {
-    return 'IT-' + Math.floor(100000 + Math.random() * 900000);
-  }
-
-  async function createBooking(booking) {
+    async function createBooking(booking) {
     requireSupabase();
     var res = await supabase.rpc('create_booking', {
       p_password: booking.password,
@@ -271,7 +267,7 @@ button { font-family:inherit; }
   function inquiryForm() {
     openModal('الاستعلام عن الموعد',
       '<form class="formGrid" id="inquiryForm">' +
-        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required></label>' +
+        '<label>رقم الحجز<input name="code" type="text" placeholder="mc12345678901" required></label>' +
         '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<div class="modalActions"><button class="primary" type="submit">استعلام</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
@@ -281,7 +277,7 @@ button { font-family:inherit; }
     document.getElementById('inquiryForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
-      var code = String(fd.get('code') || '').trim().toUpperCase();
+      var code = String(fd.get('code') || '').trim();
       var identity = String(fd.get('identity') || '').trim();
       var result = document.getElementById('formResult');
       result.style.display = 'block';
@@ -355,7 +351,7 @@ button { font-family:inherit; }
   function cancelForm() {
     openModal('إلغاء الموعد',
       '<form class="formGrid" id="cancelForm">' +
-        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required></label>' +
+        '<label>رقم الحجز<input name="code" type="text" placeholder="mc12345678901" required></label>' +
         '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<label>كلمة مرور الإلغاء<input name="password" type="password" required autocomplete="off"></label>' +
         '<div class="modalActions"><button class="primary" type="submit">إلغاء الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
@@ -366,7 +362,7 @@ button { font-family:inherit; }
     document.getElementById('cancelForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
-      var code = String(fd.get('code') || '').trim().toUpperCase();
+      var code = String(fd.get('code') || '').trim();
       var identity = String(fd.get('identity') || '').trim();
       var password = String(fd.get('password') || '');
       var result = document.getElementById('formResult');
