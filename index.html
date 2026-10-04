@@ -275,15 +275,67 @@ button { font-family:inherit; }
       var fd = new FormData(e.currentTarget);
       var code = String(fd.get('code') || '').trim().toUpperCase();
       var identity = String(fd.get('identity') || '').trim();
-      var booking = null;
-      try { booking = await getBooking(code, identity); } catch (err) { result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.'; return; }
       var result = document.getElementById('formResult');
       result.style.display = 'block';
+      result.textContent = 'جاري البحث عن الحجز...';
+      var booking = null;
+      try {
+        booking = await getBooking(code, identity);
+      } catch (err) {
+        result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.';
+        return;
+      }
       if (!booking || booking.identity !== identity) {
         result.textContent = 'لم يتم العثور على حجز مطابق.';
         return;
       }
-      result.innerHTML = 'الخدمة: <strong>' + escapeHtml(services[booking.service] ? services[booking.service].name : booking.service) + '</strong><br>التاريخ: <strong>' + escapeHtml(booking.date) + '</strong><br>الحالة: <strong>' + escapeHtml(booking.status) + '</strong>';
+
+      var serviceName = services[booking.service] ? services[booking.service].name : booking.service;
+      var bookingDate = booking.booking_date || booking.date || '';
+      var createdAt = booking.created_at || booking.createdAt || '';
+      var dateText = bookingDate ? new Date(bookingDate + 'T00:00:00').toLocaleDateString('ar-EG') : 'غير متاح';
+      var createdText = createdAt ? new Date(createdAt).toLocaleString('ar-EG') : 'غير متاح';
+      result.innerHTML =
+        '<div><strong>رقم الحجز:</strong> ' + escapeHtml(booking.code || code) + '</div>' +
+        '<div><strong>الاسم بالكامل:</strong> ' + escapeHtml(booking.name || 'غير متاح') + '</div>' +
+        '<div><strong>الخدمة:</strong> ' + escapeHtml(serviceName || 'غير متاح') + '</div>' +
+        '<div><strong>رقم جواز السفر / الرقم القومي:</strong> ' + escapeHtml(booking.identity || identity) + '</div>' +
+        '<div><strong>رقم الهاتف:</strong> ' + escapeHtml(booking.phone || 'غير متاح') + '</div>' +
+        '<div><strong>تاريخ الموعد:</strong> ' + escapeHtml(dateText) + '</div>' +
+        '<div><strong>حالة الحجز:</strong> ' + escapeHtml(booking.status || 'غير متاح') + '</div>' +
+        '<div><strong>تاريخ تسجيل الحجز:</strong> ' + escapeHtml(createdText) + '</div>' +
+        '<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff4df;color:#805000">تنبيه: رسوم الحجز 8000 جنيه مصري، تُسدد مرة واحدة لكل حجز.</div>' +
+        '<div style="margin-top:12px;padding:12px;border-radius:10px;background:#e8f1ff;color:#173b5b"><strong>الوقت المتبقي حتى نهاية يوم التسجيل:</strong><div id="bookingCountdown" style="font-size:1.2em;margin-top:5px">جارٍ حساب الوقت...</div></div>';
+
+      var countdown = document.getElementById('bookingCountdown');
+      if (countdown) {
+        if (!createdAt || isNaN(new Date(createdAt).getTime())) {
+          countdown.textContent = 'وقت التسجيل غير متاح.';
+        } else {
+          var createdDate = new Date(createdAt);
+          var deadline = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate() + 1, 0, 0, 0, 0);
+          function updateBookingCountdown() {
+            var left = deadline.getTime() - Date.now();
+            if (left <= 0) {
+              countdown.textContent = 'انتهى الوقت.';
+              return;
+            }
+            var hours = Math.floor(left / 3600000);
+            var minutes = Math.floor((left % 3600000) / 60000);
+            var seconds = Math.floor((left % 60000) / 1000);
+            countdown.textContent = hours + ' ساعة، ' + minutes + ' دقيقة، ' + seconds + ' ثانية';
+          }
+          updateBookingCountdown();
+          var countdownTimer = setInterval(function () {
+            if (!document.getElementById('bookingCountdown')) {
+              clearInterval(countdownTimer);
+              return;
+            }
+            updateBookingCountdown();
+            if (Date.now() >= deadline.getTime()) clearInterval(countdownTimer);
+          }, 1000);
+        }
+      }
     });
   }
 
