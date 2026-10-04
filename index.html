@@ -95,6 +95,7 @@ button { font-family:inherit; }
 </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -217,6 +218,66 @@ button { font-family:inherit; }
     return res.data;
   }
 
+  async function markPaymentPaid(code, identity, password) {
+    requireSupabase();
+    var res = await supabase.rpc('mark_payment_paid', {
+      p_code: code,
+      p_identity: identity,
+      p_password: password
+    });
+    if (res.error) throw res.error;
+    if (!res.data || res.data.success !== true) {
+      throw new Error(res.data && res.data.message ? res.data.message : 'تعذر تحديث حالة السداد');
+    }
+    return res.data;
+  }
+
+  function downloadPaymentInvoice(booking) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      alert('تعذر تحميل الفاتورة. حاول مرة أخرى.');
+      return;
+    }
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({unit:'pt', format:'a4'});
+    var code = booking.code || '';
+    var name = booking.name || '';
+    var identity = booking.identity || '';
+    var phone = booking.phone || '';
+    var bookingDate = booking.booking_date || '';
+    var paidAt = booking.paid_at ? new Date(booking.paid_at).toLocaleString('ar-EG') : new Date().toLocaleString('ar-EG');
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(20);
+    doc.text('Payment Receipt', 297, 70, {align:'center'});
+    doc.setFontSize(14);
+    doc.text('إيصال سداد', 297, 95, {align:'center'});
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(12);
+    var lines = [
+      ['رقم الحجز', code],
+      ['الاسم', name],
+      ['رقم الهوية / جواز السفر', identity],
+      ['رقم الهاتف', phone],
+      ['تاريخ الموعد', bookingDate],
+      ['المبلغ المسدد', '8000 جنيه مصري'],
+      ['طريقة استلام المبلغ', 'باليورو'],
+      ['تاريخ تسجيل السداد', paidAt],
+      ['حالة السداد', 'تم دفع المبلغ']
+    ];
+    var y = 145;
+    lines.forEach(function(row){
+      doc.setFont('helvetica','bold');
+      doc.text(String(row[0]), 500, y, {align:'right'});
+      doc.setFont('helvetica','normal');
+      doc.text(String(row[1]), 80, y);
+      y += 34;
+    });
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    doc.text('هذا الإيصال يوضح حالة السداد المسجلة في النظام.', 297, y + 25, {align:'center'});
+    doc.save('payment-invoice-' + code + '.pdf');
+  }
+
   function bookingForm(preselected) {
     var options = Object.keys(services).map(function (key) {
       var selected = key === preselected ? ' selected' : '';
@@ -299,6 +360,7 @@ button { font-family:inherit; }
       var createdAt = booking.created_at || booking.createdAt || '';
       var dateText = bookingDate ? new Date(bookingDate + 'T00:00:00').toLocaleDateString('ar-EG') : 'غير متاح';
       var createdText = createdAt ? new Date(createdAt).toLocaleString('ar-EG') : 'غير متاح';
+      var isPaid = String(booking.payment_status || '').toLowerCase() === 'paid';
       result.innerHTML =
         '<div><strong>رقم الحجز:</strong> ' + escapeHtml(booking.code || code) + '</div>' +
         '<div><strong>الاسم بالكامل:</strong> ' + escapeHtml(booking.name || 'غير متاح') + '</div>' +
@@ -307,14 +369,56 @@ button { font-family:inherit; }
         '<div><strong>رقم الهاتف:</strong> ' + escapeHtml(booking.phone || 'غير متاح') + '</div>' +
         '<div><strong>تاريخ الموعد:</strong> ' + escapeHtml(dateText) + '</div>' +
         '<div><strong>حالة الحجز:</strong> ' + escapeHtml(booking.status || 'غير متاح') + '</div>' +
+        '<div><strong>حالة السداد:</strong> <span id="paymentStatusText">' + (isPaid ? 'تم دفع المبلغ' : 'يرجى دفع المبلغ') + '</span></div>' +
         '<div><strong>تاريخ تسجيل الحجز:</strong> ' + escapeHtml(createdText) + '</div>' +
-        '<div style="margin:0 0 14px;padding:16px;border-radius:12px;background:#fff4df;color:#805000;border:1px solid #e5b85c;font-weight:700;line-height:1.8">' +
-        '<div style="font-size:1.05em;margin-bottom:6px">تنبيه مهم</div>' +
-        '<div>المبلغ المطلوب: <strong>8000 جنيه مصري</strong></div>' +
-        '<div>يتم سداد المبلغ واستلامه <strong>باليورو</strong> يوم موعد المقابلة.</div>' +
-        '<div>القيمة التقريبية حاليًا: <strong>حوالي 135 يورو</strong>، وفق سعر صرف تقريبي يقارب 59.18 جنيهًا لليورو، وقد تختلف القيمة النهائية حسب سعر الصرف يوم المقابلة.</div>' +
-        '</div>' +
-        '<div style="margin-top:12px;padding:12px;border-radius:10px;background:#e8f1ff;color:#173b5b"><strong>الوقت المتبقي حتى نهاية يوم التسجيل:</strong><div id="bookingCountdown" style="font-size:1.2em;margin-top:5px">جارٍ حساب الوقت...</div></div>';
+        (isPaid ?
+          '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#e8f8ef;color:#116b48;border:1px solid #78c99a;font-weight:800;line-height:1.8">' +
+          '<div style="font-size:1.05em;margin-bottom:6px">تم دفع المبلغ</div>' +
+          '<div>المبلغ المسدد: <strong>8000 جنيه مصري</strong></div>' +
+          '<div>تم تسجيل السداد في النظام.</div>' +
+          '<button class="primary" type="button" id="downloadInvoiceBtn" style="margin-top:12px">تحميل فاتورة الدفع</button>' +
+          '</div>' :
+          '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#fff4df;color:#805000;border:1px solid #e5b85c;font-weight:700;line-height:1.8">' +
+          '<div style="font-size:1.05em;margin-bottom:6px">تنبيه مهم</div>' +
+          '<div>المبلغ المطلوب: <strong>8000 جنيه مصري</strong></div>' +
+          '<div>يتم سداد المبلغ واستلامه <strong>باليورو</strong> يوم موعد المقابلة.</div>' +
+          '<div>القيمة التقريبية تُحسب حسب سعر الصرف وقت السداد.</div>' +
+          '<button class="primary" type="button" id="markPaidBtn" style="margin-top:12px">تسجيل تم دفع المبلغ</button>' +
+          '</div>') +
+        (isPaid ? '' : '<div style="margin-top:12px;padding:12px;border-radius:10px;background:#e8f1ff;color:#173b5b"><strong>الوقت المتبقي حتى نهاية يوم التسجيل:</strong><div id="bookingCountdown" style="font-size:1.2em;margin-top:5px">جارٍ حساب الوقت...</div></div>');
+
+      var downloadInvoiceBtn = document.getElementById('downloadInvoiceBtn');
+      if (downloadInvoiceBtn) {
+        downloadInvoiceBtn.addEventListener('click', function(){ downloadPaymentInvoice(booking); });
+      }
+      var markPaidBtn = document.getElementById('markPaidBtn');
+      if (markPaidBtn) {
+        markPaidBtn.addEventListener('click', async function(){
+          var password = prompt('أدخل كلمة مرور الإدارة لتسجيل السداد:');
+          if (password === null) return;
+          markPaidBtn.disabled = true;
+          markPaidBtn.textContent = 'جاري تحديث حالة السداد...';
+          try {
+            var paid = await markPaymentPaid(booking.code || code, booking.identity || identity, password);
+            booking.payment_status = 'paid';
+            booking.paid_at = paid.paid_at || new Date().toISOString();
+            booking.payment_amount_egp = 8000;
+            booking.payment_method = 'EUR';
+            inquiryForm();
+            setTimeout(function(){
+              var body = document.getElementById('modalBody');
+              if (body) {
+                body.innerHTML = '<div class="result" style="display:block;background:#e8f8ef;color:#116b48"><strong>تم تحديث حالة السداد بنجاح.</strong><br>المبلغ: 8000 جنيه مصري.<br><button class="primary" type="button" id="downloadInvoiceAfterPaid" style="margin-top:12px">تحميل فاتورة الدفع</button></div>';
+                document.getElementById('downloadInvoiceAfterPaid').addEventListener('click', function(){ downloadPaymentInvoice(booking); });
+              }
+            }, 50);
+          } catch (err) {
+            markPaidBtn.disabled = false;
+            markPaidBtn.textContent = 'تسجيل تم دفع المبلغ';
+            alert(err && err.message ? err.message : 'تعذر تحديث حالة السداد.');
+          }
+        });
+      }
 
       var countdown = document.getElementById('bookingCountdown');
       if (countdown) {
