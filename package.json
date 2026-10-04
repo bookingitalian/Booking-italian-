@@ -1,12 +1,7 @@
 {
-  "name": "italian-appointment-portal",
+  "name": "italian-booking-portal",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^5.1.0",
-    "pg": "^8.16.3"
-  }
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^5.1.0" }
 }
