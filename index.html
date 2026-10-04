@@ -176,14 +176,10 @@ button { font-family:inherit; }
     }
   }
 
-  function makeCode() {
-    return 'IT-' + Math.floor(100000 + Math.random() * 900000);
-  }
-
   async function createBooking(booking) {
     requireSupabase();
     var res = await supabase.rpc('create_booking', {
-      p_code: booking.code,
+      p_password: booking.password,
       p_service: booking.service,
       p_name: booking.name,
       p_identity: booking.identity,
@@ -191,6 +187,13 @@ button { font-family:inherit; }
       p_date: booking.date
     });
     if (res.error) throw res.error;
+    if (!res.data || res.data.success !== true) {
+      throw new Error(
+        res.data && res.data.message
+          ? res.data.message
+          : 'تعذر تسجيل الحجز'
+      );
+    }
     return res.data;
   }
 
@@ -227,6 +230,7 @@ button { font-family:inherit; }
         '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<label>رقم الهاتف<input name="phone" type="tel" required autocomplete="tel"></label>' +
         '<label>التاريخ المطلوب<input name="date" type="date" required></label>' +
+        '<label>كلمة مرور التسجيل<input name="password" type="password" required autocomplete="off" placeholder="أدخل كلمة المرور"></label>' +
         '<div class="modalActions"><button class="primary" type="submit">تأكيد حجز الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
       '</form>'
@@ -237,7 +241,7 @@ button { font-family:inherit; }
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
       var booking = {
-        code: makeCode(),
+        password: String(fd.get('password') || ''),
         service: String(fd.get('service') || ''),
         name: String(fd.get('name') || '').trim(),
         identity: String(fd.get('identity') || '').trim(),
@@ -246,13 +250,13 @@ button { font-family:inherit; }
         status: 'قيد المراجعة',
         createdAt: new Date().toISOString()
       };
-      if (!booking.service || !booking.name || !booking.identity || !booking.phone || !booking.date) return;
+      if (!booking.password || !booking.service || !booking.name || !booking.identity || !booking.phone || !booking.date) return;
       var result = document.getElementById('formResult');
       result.style.display = 'block';
       result.textContent = 'جاري تسجيل الحجز...';
       try {
         var saved = await createBooking(booking);
-        var code = saved && saved.code ? saved.code : booking.code;
+        var code = saved && saved.code ? saved.code : '';
         result.innerHTML = 'تم تسجيل طلبك بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(code) + '</strong><br>الحالة: قيد المراجعة';
       } catch (err) {
         result.textContent = err && err.message ? err.message : 'تعذر تسجيل الحجز. حاول مرة أخرى.';
