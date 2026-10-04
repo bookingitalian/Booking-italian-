@@ -94,10 +94,14 @@ button { font-family:inherit; }
 <div class="modalBody" id="modalBody"></div>
 </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
   'use strict';
 
+  /* =========================
+     نظام الأوامر الجديد بالكامل
+     ========================= */
   var modal = document.getElementById('appModal');
   var modalTitle = document.getElementById('modalTitle');
   var modalBody = document.getElementById('modalBody');
@@ -115,16 +119,6 @@ button { font-family:inherit; }
     modal.classList.remove('show');
     modal.setAttribute('aria-hidden', 'true');
     modalBody.innerHTML = '';
-  }
-
-  function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];
-    });
-  }
-
-  function normalize(value) {
-    return String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
   }
 
   document.getElementById('closeModal').addEventListener('click', closeModal);
@@ -158,20 +152,66 @@ button { font-family:inherit; }
     }
   };
 
-  async function api(path, options) {
-    var response = await fetch(path, Object.assign({
-      headers: {'Content-Type': 'application/json'}
-    }, options || {}));
-    var data = null;
-    try { data = await response.json(); } catch (_) {}
-    if (!response.ok) {
-      throw new Error((data && data.error) || 'تعذر الاتصال بالخادم.');
-    }
-    return data;
+  if (!supabaseReady) { console.warn('Supabase غير مُعد: ضع SUPABASE_URL و SUPABASE_ANON_KEY داخل الملف.'); }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c];
+    });
   }
 
-  function makeCodePreview() {
-    return 'IT-XXXXXX';
+  /* =========================
+     Supabase
+     ضع هنا رابط مشروع Supabase و Anon/Publishable Key فقط.
+     ممنوع وضع service_role key داخل الموقع.
+     ========================= */
+  var SUPABASE_URL = 'https://hkcmjnklrftnumsqxxnx.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_EULP0_SzDJcqvfm2JIcqaw_Lco1BZLh';
+  var supabaseReady = SUPABASE_URL.indexOf('YOUR_') !== 0 && SUPABASE_ANON_KEY.indexOf('YOUR_') !== 0;
+  var supabase = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  function requireSupabase() {
+    if (!supabaseReady || !supabase) {
+      throw new Error('لم يتم إعداد اتصال قاعدة البيانات بعد.');
+    }
+  }
+
+  function makeCode() {
+    return 'IT-' + Math.floor(100000 + Math.random() * 900000);
+  }
+
+  async function createBooking(booking) {
+    requireSupabase();
+    var res = await supabase.rpc('create_booking', {
+      p_code: booking.code,
+      p_service: booking.service,
+      p_name: booking.name,
+      p_identity: booking.identity,
+      p_phone: booking.phone,
+      p_date: booking.date
+    });
+    if (res.error) throw res.error;
+    return res.data;
+  }
+
+  async function getBooking(code, identity) {
+    requireSupabase();
+    var res = await supabase.rpc('get_booking', {
+      p_code: code,
+      p_identity: identity
+    });
+    if (res.error) throw res.error;
+    return Array.isArray(res.data) ? (res.data[0] || null) : (res.data || null);
+  }
+
+  async function cancelBooking(code, identity) {
+    requireSupabase();
+    var res = await supabase.rpc('cancel_booking', {
+      p_code: code,
+      p_identity: identity
+    });
+    if (res.error) throw res.error;
+    return res.data;
   }
 
   function bookingForm(preselected) {
@@ -184,8 +224,8 @@ button { font-family:inherit; }
       '<form class="formGrid" id="bookingForm">' +
         '<label>الخدمة<select name="service" required><option value="">اختر الخدمة</option>' + options + '</select></label>' +
         '<label>الاسم بالكامل<input name="name" type="text" required autocomplete="name"></label>' +
-        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required autocomplete="off"></label>' +
-        '<label>رقم الهاتف<input name="phone" type="tel" required autocomplete="tel" placeholder="01xxxxxxxxx"></label>' +
+        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
+        '<label>رقم الهاتف<input name="phone" type="tel" required autocomplete="tel"></label>' +
         '<label>التاريخ المطلوب<input name="date" type="date" required></label>' +
         '<div class="modalActions"><button class="primary" type="submit">تأكيد حجز الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
@@ -197,21 +237,23 @@ button { font-family:inherit; }
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
       var booking = {
-        service: normalize(fd.get('service')),
-        name: normalize(fd.get('name')),
-        identity: normalize(fd.get('identity')),
-        phone: normalize(fd.get('phone')),
-        date: normalize(fd.get('date'))
+        code: makeCode(),
+        service: String(fd.get('service') || ''),
+        name: String(fd.get('name') || '').trim(),
+        identity: String(fd.get('identity') || '').trim(),
+        phone: String(fd.get('phone') || '').trim(),
+        date: String(fd.get('date') || ''),
+        status: 'قيد المراجعة',
+        createdAt: new Date().toISOString()
       };
+      if (!booking.service || !booking.name || !booking.identity || !booking.phone || !booking.date) return;
       var result = document.getElementById('formResult');
       result.style.display = 'block';
       result.textContent = 'جاري تسجيل الحجز...';
       try {
-        var saved = await api('/api/italian/bookings', {
-          method: 'POST',
-          body: JSON.stringify(booking)
-        });
-        result.innerHTML = 'تم تسجيل طلبك بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(saved.ticket) + '</strong><br>الخدمة: <strong>' + escapeHtml(services[saved.service] ? services[saved.service].name : saved.service) + '</strong><br>الحالة: <strong>' + escapeHtml(saved.status) + '</strong>';
+        var saved = await createBooking(booking);
+        var code = saved && saved.code ? saved.code : booking.code;
+        result.innerHTML = 'تم تسجيل طلبك بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(code) + '</strong><br>الحالة: قيد المراجعة';
       } catch (err) {
         result.textContent = err && err.message ? err.message : 'تعذر تسجيل الحجز. حاول مرة أخرى.';
       }
@@ -221,8 +263,8 @@ button { font-family:inherit; }
   function inquiryForm() {
     openModal('الاستعلام عن الموعد',
       '<form class="formGrid" id="inquiryForm">' +
-        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required autocomplete="off"></label>' +
-        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required autocomplete="off"></label>' +
+        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required></label>' +
+        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<div class="modalActions"><button class="primary" type="submit">استعلام</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
       '</form>'
@@ -231,25 +273,25 @@ button { font-family:inherit; }
     document.getElementById('inquiryForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
-      var code = normalize(fd.get('code')).toUpperCase();
-      var identity = normalize(fd.get('identity'));
+      var code = String(fd.get('code') || '').trim().toUpperCase();
+      var identity = String(fd.get('identity') || '').trim();
+      var booking = null;
+      try { booking = await getBooking(code, identity); } catch (err) { result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.'; return; }
       var result = document.getElementById('formResult');
       result.style.display = 'block';
-      result.textContent = 'جاري البحث...';
-      try {
-        var booking = await api('/api/italian/bookings/search?ticket=' + encodeURIComponent(code) + '&identity=' + encodeURIComponent(identity));
-        result.innerHTML = 'الخدمة: <strong>' + escapeHtml(services[booking.service] ? services[booking.service].name : booking.service) + '</strong><br>التاريخ: <strong>' + escapeHtml(booking.date) + '</strong><br>الحالة: <strong>' + escapeHtml(booking.status) + '</strong><br>رقم الحجز: <strong>' + escapeHtml(booking.ticket) + '</strong>';
-      } catch (err) {
-        result.textContent = err && err.message ? err.message : 'لم يتم العثور على حجز مطابق.';
+      if (!booking || booking.identity !== identity) {
+        result.textContent = 'لم يتم العثور على حجز مطابق.';
+        return;
       }
+      result.innerHTML = 'الخدمة: <strong>' + escapeHtml(services[booking.service] ? services[booking.service].name : booking.service) + '</strong><br>التاريخ: <strong>' + escapeHtml(booking.date) + '</strong><br>الحالة: <strong>' + escapeHtml(booking.status) + '</strong>';
     });
   }
 
   function cancelForm() {
     openModal('إلغاء الموعد',
       '<form class="formGrid" id="cancelForm">' +
-        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required autocomplete="off"></label>' +
-        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required autocomplete="off"></label>' +
+        '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required></label>' +
+        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<div class="modalActions"><button class="primary" type="submit">إلغاء الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
       '</form>'
@@ -258,19 +300,25 @@ button { font-family:inherit; }
     document.getElementById('cancelForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
-      var code = normalize(fd.get('code')).toUpperCase();
-      var identity = normalize(fd.get('identity'));
+      var code = String(fd.get('code') || '').trim().toUpperCase();
+      var identity = String(fd.get('identity') || '').trim();
+      var booking = null;
+      try { booking = await getBooking(code, identity); } catch (err) { result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.'; return; }
       var result = document.getElementById('formResult');
       result.style.display = 'block';
-      result.textContent = 'جاري إلغاء الموعد...';
+      if (!booking || booking.identity !== identity) {
+        result.textContent = 'بيانات الحجز غير صحيحة.';
+        return;
+      }
+      if (booking.status === 'ملغى') {
+        result.textContent = 'هذا الموعد ملغى بالفعل.';
+        return;
+      }
       try {
-        var data = await api('/api/italian/bookings/cancel', {
-          method: 'POST',
-          body: JSON.stringify({ticket: code, identity: identity})
-        });
-        result.innerHTML = 'تم إلغاء الموعد بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(data.ticket) + '</strong><br>الحالة: <strong>ملغى</strong>';
+        await cancelBooking(code, identity);
+        result.innerHTML = 'تم إلغاء الموعد بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(booking.code) + '</strong>';
       } catch (err) {
-        result.textContent = err && err.message ? err.message : 'تعذر إلغاء الموعد.';
+        result.textContent = err && err.message ? err.message : 'تعذر إلغاء الموعد. حاول مرة أخرى.';
       }
     });
   }
@@ -292,15 +340,23 @@ button { font-family:inherit; }
 
   function loginForm() {
     openModal('تسجيل الدخول',
-      '<div class="serviceDetails">' +
-        '<div class="row"><b>ملاحظة</b>تسجيل الدخول الإداري ليس جزءًا من نظام حجز العملاء الحالي.</div>' +
-        '<div class="modalActions"><button class="secondary" type="button" id="backBtn">إغلاق</button></div>' +
-      '</div>'
+      '<form class="formGrid" id="loginForm">' +
+        '<label>البريد الإلكتروني<input name="email" type="email" required autocomplete="username"></label>' +
+        '<label>كلمة المرور<input name="password" type="password" required autocomplete="current-password"></label>' +
+        '<div class="modalActions"><button class="primary" type="submit">دخول</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
+        '<div class="result" id="formResult"></div>' +
+      '</form>'
     );
     document.getElementById('backBtn').addEventListener('click', closeModal);
+    document.getElementById('loginForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var result = document.getElementById('formResult');
+      result.style.display = 'block';
+      result.textContent = 'تم تسجيل الدخول بنجاح (وضع تجريبي).';
+    });
   }
 
-  /* ربط مباشر: كل زر له أمر واحد محدد */
+  /* ربط مباشر: كل زر له أمر واحد محدد، بدون event delegation */
   document.querySelector('.login').addEventListener('click', loginForm);
   document.querySelector('.hero .b1').addEventListener('click', bookingForm);
   document.querySelector('.hero .b2').addEventListener('click', cancelForm);
@@ -310,6 +366,7 @@ button { font-family:inherit; }
   document.querySelector('.services-wrap .s3').addEventListener('click', function () { showService('consular'); });
   document.querySelector('.services-wrap .s4').addEventListener('click', function () { showService('attestation'); });
 
+  /* روابط القائمة */
   document.querySelectorAll('.nav a').forEach(function (link) {
     link.addEventListener('click', function (e) {
       var href = link.getAttribute('href');
