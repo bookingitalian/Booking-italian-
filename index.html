@@ -176,6 +176,10 @@ button { font-family:inherit; }
     }
   }
 
+  function makeCode() {
+    return 'IT-' + Math.floor(100000 + Math.random() * 900000);
+  }
+
   async function createBooking(booking) {
     requireSupabase();
     var res = await supabase.rpc('create_booking', {
@@ -188,11 +192,7 @@ button { font-family:inherit; }
     });
     if (res.error) throw res.error;
     if (!res.data || res.data.success !== true) {
-      throw new Error(
-        res.data && res.data.message
-          ? res.data.message
-          : 'تعذر تسجيل الحجز'
-      );
+      throw new Error(res.data && res.data.message ? res.data.message : 'تعذر تسجيل الحجز');
     }
     return res.data;
   }
@@ -207,13 +207,17 @@ button { font-family:inherit; }
     return Array.isArray(res.data) ? (res.data[0] || null) : (res.data || null);
   }
 
-  async function cancelBooking(code, identity) {
+  async function cancelBooking(code, identity, password) {
     requireSupabase();
     var res = await supabase.rpc('cancel_booking', {
       p_code: code,
-      p_identity: identity
+      p_identity: identity,
+      p_password: password
     });
     if (res.error) throw res.error;
+    if (!res.data || res.data.success !== true) {
+      throw new Error(res.data && res.data.message ? res.data.message : 'تعذر إلغاء الموعد');
+    }
     return res.data;
   }
 
@@ -230,7 +234,7 @@ button { font-family:inherit; }
         '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
         '<label>رقم الهاتف<input name="phone" type="tel" required autocomplete="tel"></label>' +
         '<label>التاريخ المطلوب<input name="date" type="date" required></label>' +
-        '<label>كلمة مرور التسجيل<input name="password" type="password" required autocomplete="off" placeholder="أدخل كلمة المرور"></label>' +
+        '<label>كلمة مرور التسجيل<input name="password" type="password" required autocomplete="off"></label>' +
         '<div class="modalActions"><button class="primary" type="submit">تأكيد حجز الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
       '</form>'
@@ -241,22 +245,22 @@ button { font-family:inherit; }
       e.preventDefault();
       var fd = new FormData(e.currentTarget);
       var booking = {
-        password: String(fd.get('password') || ''),
         service: String(fd.get('service') || ''),
         name: String(fd.get('name') || '').trim(),
         identity: String(fd.get('identity') || '').trim(),
         phone: String(fd.get('phone') || '').trim(),
         date: String(fd.get('date') || ''),
+        password: String(fd.get('password') || ''),
         status: 'قيد المراجعة',
         createdAt: new Date().toISOString()
       };
-      if (!booking.password || !booking.service || !booking.name || !booking.identity || !booking.phone || !booking.date) return;
+      if (!booking.service || !booking.name || !booking.identity || !booking.phone || !booking.date || !booking.password) return;
       var result = document.getElementById('formResult');
       result.style.display = 'block';
       result.textContent = 'جاري تسجيل الحجز...';
       try {
         var saved = await createBooking(booking);
-        var code = saved && saved.code ? saved.code : '';
+        var code = saved && saved.code ? saved.code : booking.code;
         result.innerHTML = 'تم تسجيل طلبك بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(code) + '</strong><br>الحالة: قيد المراجعة';
       } catch (err) {
         result.textContent = err && err.message ? err.message : 'تعذر تسجيل الحجز. حاول مرة أخرى.';
@@ -308,7 +312,12 @@ button { font-family:inherit; }
         '<div><strong>تاريخ الموعد:</strong> ' + escapeHtml(dateText) + '</div>' +
         '<div><strong>حالة الحجز:</strong> ' + escapeHtml(booking.status || 'غير متاح') + '</div>' +
         '<div><strong>تاريخ تسجيل الحجز:</strong> ' + escapeHtml(createdText) + '</div>' +
-        '<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fff4df;color:#805000">تنبيه: رسوم الحجز 8000 جنيه مصري، تُسدد مرة واحدة لكل حجز.</div>' +
+        '<div style="margin:0 0 14px;padding:16px;border-radius:12px;background:#fff4df;color:#805000;border:1px solid #e5b85c;font-weight:700;line-height:1.8">' +
+        '<div style="font-size:1.05em;margin-bottom:6px">تنبيه مهم</div>' +
+        '<div>المبلغ المطلوب: <strong>8000 جنيه مصري</strong></div>' +
+        '<div>يتم سداد المبلغ واستلامه <strong>باليورو</strong> يوم موعد المقابلة.</div>' +
+        '<div>القيمة التقريبية حاليًا: <strong>حوالي 135 يورو</strong>، وفق سعر صرف تقريبي يقارب 59.18 جنيهًا لليورو، وقد تختلف القيمة النهائية حسب سعر الصرف يوم المقابلة.</div>' +
+        '</div>' +
         '<div style="margin-top:12px;padding:12px;border-radius:10px;background:#e8f1ff;color:#173b5b"><strong>الوقت المتبقي حتى نهاية يوم التسجيل:</strong><div id="bookingCountdown" style="font-size:1.2em;margin-top:5px">جارٍ حساب الوقت...</div></div>';
 
       var countdown = document.getElementById('bookingCountdown');
@@ -348,6 +357,7 @@ button { font-family:inherit; }
       '<form class="formGrid" id="cancelForm">' +
         '<label>رقم الحجز<input name="code" type="text" placeholder="IT-123456" required></label>' +
         '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
+        '<label>كلمة مرور الإلغاء<input name="password" type="password" required autocomplete="off"></label>' +
         '<div class="modalActions"><button class="primary" type="submit">إلغاء الموعد</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
         '<div class="result" id="formResult"></div>' +
       '</form>'
@@ -358,10 +368,11 @@ button { font-family:inherit; }
       var fd = new FormData(e.currentTarget);
       var code = String(fd.get('code') || '').trim().toUpperCase();
       var identity = String(fd.get('identity') || '').trim();
-      var booking = null;
-      try { booking = await getBooking(code, identity); } catch (err) { result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.'; return; }
+      var password = String(fd.get('password') || '');
       var result = document.getElementById('formResult');
       result.style.display = 'block';
+      var booking = null;
+      try { booking = await getBooking(code, identity); } catch (err) { result.textContent = err && err.message ? err.message : 'تعذر الاتصال بقاعدة البيانات.'; return; }
       if (!booking || booking.identity !== identity) {
         result.textContent = 'بيانات الحجز غير صحيحة.';
         return;
@@ -371,7 +382,7 @@ button { font-family:inherit; }
         return;
       }
       try {
-        await cancelBooking(code, identity);
+        await cancelBooking(code, identity, password);
         result.innerHTML = 'تم إلغاء الموعد بنجاح.<br>رقم الحجز: <strong>' + escapeHtml(booking.code) + '</strong>';
       } catch (err) {
         result.textContent = err && err.message ? err.message : 'تعذر إلغاء الموعد. حاول مرة أخرى.';
