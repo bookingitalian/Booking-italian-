@@ -205,6 +205,56 @@ button { font-family:inherit; }
     return Array.isArray(res.data) ? (res.data[0] || null) : (res.data || null);
   }
 
+  async function saveTicketDetails(code, identity, ticketNumber, password, fileUrl, fileName) {
+    requireSupabase();
+    var res = await supabase.rpc('save_ticket_details', {
+      p_code: code,
+      p_identity: identity,
+      p_ticket_number: ticketNumber,
+      p_password: password,
+      p_file_url: fileUrl || null,
+      p_file_name: fileName || null
+    });
+    if (res.error) throw res.error;
+    if (!res.data || res.data.success !== true) {
+      throw new Error(res.data && res.data.message ? res.data.message : 'تعذر حفظ بيانات التذكرة');
+    }
+    return res.data;
+  }
+
+  async function uploadBookingTicket(booking, file, ticketNumber, password) {
+    requireSupabase();
+    if (!file) throw new Error('اختر ملف التذكرة أولاً.');
+    if (!ticketNumber) throw new Error('اكتب رقم التذكرة أولاً.');
+    if (!password) throw new Error('اكتب كلمة المرور أولاً.');
+    var allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.indexOf(file.type) === -1) throw new Error('مسموح برفع PDF أو JPG أو PNG أو WEBP فقط.');
+    if (file.size > 5 * 1024 * 1024) throw new Error('حجم التذكرة يجب ألا يتجاوز 5 ميجابايت.');
+
+    var code = String(booking.code || '').trim();
+    var safeCode = code.replace(/[^a-zA-Z0-9_-]/g, '');
+    var ext = (file.name.split('.').pop() || 'pdf').toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
+    var path = safeCode + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+
+    var upload = await supabase.storage.from('appointment-tickets').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type
+    });
+    if (upload.error) throw upload.error;
+
+    var publicData = supabase.storage.from('appointment-tickets').getPublicUrl(path);
+    var url = publicData && publicData.data ? publicData.data.publicUrl : '';
+    if (!url) throw new Error('تعذر إنشاء رابط التذكرة.');
+
+    var saved = await saveTicketDetails(code, booking.identity, ticketNumber, password, url, file.name);
+    booking.ticket_number = saved.ticket_number || ticketNumber;
+    booking.ticket_file_url = saved.ticket_file_url || url;
+    booking.ticket_file_name = saved.ticket_file_name || file.name;
+    booking.ticket_uploaded_at = saved.ticket_uploaded_at || new Date().toISOString();
+    return booking;
+  }
+
   async function cancelBooking(code, identity, password) {
     requireSupabase();
     var res = await supabase.rpc('cancel_booking', {
@@ -410,6 +460,16 @@ button { font-family:inherit; }
         '<div><strong>حالة الحجز:</strong> ' + escapeHtml(booking.status || 'غير متاح') + '</div>' +
         '<div><strong>حالة السداد:</strong> <span id="paymentStatusText">' + (isPaid ? 'تم دفع المبلغ' : 'يرجى دفع المبلغ') + '</span></div>' +
         '<div><strong>تاريخ تسجيل الحجز:</strong> ' + escapeHtml(createdText) + '</div>' +
+        '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#f7f9fc;color:#173b5b;border:1px solid #d8e0ea;line-height:1.8">' +
+          '<div style="font-size:1.05em;font-weight:900;margin-bottom:7px">🎫 بيانات التذكرة الخاصة بك</div>' +
+          '<div style="font-size:.92em;color:#657386;margin-bottom:10px">بعد حجز الموعد، اكتب رقم التذكرة وارفع ملف التذكرة. لا يمكن تنفيذ الخطوتين إلا باستخدام كلمة المرور.</div>' +
+          '<label style="display:block;margin-bottom:9px">رقم التذكرة<input id="ticketNumberInput" type="text" placeholder="اكتب رقم التذكرة" value="' + escapeHtml(booking.ticket_number || '') + '" style="width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:9px;background:#fff;box-sizing:border-box"></label>' +
+          '<label style="display:block;margin-bottom:9px">كلمة المرور<input id="ticketPasswordInput" type="password" autocomplete="off" placeholder="كلمة المرور" style="width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:9px;background:#fff;box-sizing:border-box"></label>' +
+          '<input id="ticketFileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" style="width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:9px;background:#fff;box-sizing:border-box">' +
+          '<button class="primary" type="button" id="uploadTicketBtn" style="margin-top:10px">حفظ رقم التذكرة ورفعها</button>' +
+          '<div id="ticketUploadStatus" style="margin-top:9px;font-size:.92em"></div>' +
+          (booking.ticket_file_url ? '<div style="margin-top:10px;padding:10px;border-radius:9px;background:#e8f8ef;color:#116b48"><strong>رقم التذكرة:</strong> ' + escapeHtml(booking.ticket_number || 'غير متاح') + '<br><strong>تم رفع التذكرة:</strong> ' + escapeHtml(booking.ticket_file_name || 'التذكرة') + '<br><a href="' + escapeHtml(booking.ticket_file_url) + '" target="_blank" rel="noopener" style="font-weight:800">عرض / تحميل التذكرة</a></div>' : '') +
+        '</div>' +
         (isPaid ?
           '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#e8f8ef;color:#116b48;border:1px solid #78c99a;font-weight:800;line-height:1.8">' +
           '<div style="font-size:1.05em;margin-bottom:6px">تم دفع المبلغ</div>' +
@@ -425,6 +485,49 @@ button { font-family:inherit; }
           '<button class="primary" type="button" id="markPaidBtn" style="margin-top:12px">تسجيل تم دفع المبلغ</button>' +
           '</div>') +
         (isPaid ? '' : '<div style="margin-top:12px;padding:12px;border-radius:10px;background:#e8f1ff;color:#173b5b"><strong>الوقت المتبقي حتى نهاية يوم التسجيل:</strong><div id="bookingCountdown" style="font-size:1.2em;margin-top:5px">جارٍ حساب الوقت...</div></div>');
+
+      var uploadTicketBtn = document.getElementById('uploadTicketBtn');
+      var ticketFileInput = document.getElementById('ticketFileInput');
+      var ticketNumberInput = document.getElementById('ticketNumberInput');
+      var ticketPasswordInput = document.getElementById('ticketPasswordInput');
+      var ticketUploadStatus = document.getElementById('ticketUploadStatus');
+      if (uploadTicketBtn && ticketFileInput) {
+        uploadTicketBtn.addEventListener('click', async function(){
+          var file = ticketFileInput.files && ticketFileInput.files[0];
+          var ticketNumber = ticketNumberInput ? String(ticketNumberInput.value || '').trim() : '';
+          var ticketPassword = ticketPasswordInput ? String(ticketPasswordInput.value || '') : '';
+          if (!ticketNumber) {
+            ticketUploadStatus.style.color = '#a05a00';
+            ticketUploadStatus.textContent = 'من فضلك اكتب رقم التذكرة أولاً.';
+            return;
+          }
+          if (!ticketPassword) {
+            ticketUploadStatus.style.color = '#a05a00';
+            ticketUploadStatus.textContent = 'من فضلك اكتب كلمة المرور أولاً.';
+            return;
+          }
+          if (!file) {
+            ticketUploadStatus.style.color = '#a05a00';
+            ticketUploadStatus.textContent = 'من فضلك اختر ملف التذكرة أولاً.';
+            return;
+          }
+          uploadTicketBtn.disabled = true;
+          uploadTicketBtn.textContent = 'جاري رفع التذكرة...';
+          ticketUploadStatus.style.color = '#173b5b';
+          ticketUploadStatus.textContent = 'جاري حفظ التذكرة على النظام...';
+          try {
+            await uploadBookingTicket(booking, file, ticketNumber, ticketPassword);
+            ticketUploadStatus.style.color = '#116b48';
+            ticketUploadStatus.innerHTML = '✓ تم رفع التذكرة بنجاح. <a href="' + escapeHtml(booking.ticket_file_url) + '" target="_blank" rel="noopener" style="font-weight:800">عرض / تحميل التذكرة</a>';
+            uploadTicketBtn.textContent = 'تم رفع التذكرة';
+          } catch (err) {
+            uploadTicketBtn.disabled = false;
+            uploadTicketBtn.textContent = 'رفع التذكرة';
+            ticketUploadStatus.style.color = '#a33a3a';
+            ticketUploadStatus.textContent = err && err.message ? err.message : 'تعذر رفع التذكرة.';
+          }
+        });
+      }
 
       var downloadInvoiceBtn = document.getElementById('downloadInvoiceBtn');
       if (downloadInvoiceBtn) {
