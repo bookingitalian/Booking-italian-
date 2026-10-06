@@ -468,7 +468,7 @@ button { font-family:inherit; }
           '<input id="ticketFileInput" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" style="width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:9px;background:#fff;box-sizing:border-box">' +
           '<button class="primary" type="button" id="uploadTicketBtn" style="margin-top:10px">حفظ رقم التذكرة ورفعها</button>' +
           '<div id="ticketUploadStatus" style="margin-top:9px;font-size:.92em"></div>' +
-          (booking.ticket_file_url ? '<div style="margin-top:10px;padding:10px;border-radius:9px;background:#e8f8ef;color:#116b48"><strong>رقم التذكرة:</strong> ' + escapeHtml(booking.ticket_number || 'غير متاح') + '<br><strong>تم رفع التذكرة:</strong> ' + escapeHtml(booking.ticket_file_name || 'التذكرة') + '<br><a href="' + escapeHtml(booking.ticket_file_url) + '" target="_blank" rel="noopener" style="font-weight:800">عرض / تحميل التذكرة</a></div>' : '') +
+          (booking.ticket_file_url ? '<div style="margin-top:10px;padding:14px;border-radius:12px;background:#e8f8ef;color:#116b48;border:1px solid #b7e3cc;text-align:center;font-weight:900">✓ تم قبول التذكرة بنجاح</div>' : '') +
         '</div>' +
         (isPaid ?
           '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#e8f8ef;color:#116b48;border:1px solid #78c99a;font-weight:800;line-height:1.8">' +
@@ -517,13 +517,13 @@ button { font-family:inherit; }
           ticketUploadStatus.textContent = 'جاري حفظ التذكرة على النظام...';
           try {
             await uploadBookingTicket(booking, file, ticketNumber, ticketPassword);
-            ticketUploadStatus.style.color = '#116b48';
-            ticketUploadStatus.innerHTML = '<div style="padding:14px;border-radius:12px;background:#e8f8ef;border:1px solid #b7e3cc;text-align:center;font-size:1.08em;font-weight:900">✓ تم قبول التذكرة</div><div style="margin-top:8px;text-align:center"><a href="' + escapeHtml(booking.ticket_file_url) + '" target="_blank" rel="noopener" style="font-weight:800">عرض / تحميل التذكرة</a></div>';
-            uploadTicketBtn.textContent = 'تم قبول التذكرة';
-            uploadTicketBtn.disabled = true;
-            if (ticketNumberInput) ticketNumberInput.disabled = true;
-            if (ticketPasswordInput) ticketPasswordInput.disabled = true;
-            ticketFileInput.disabled = true;
+            var ticketBox = uploadTicketBtn.closest('div');
+            if (ticketBox) {
+              ticketBox.innerHTML = '<div style="padding:18px;border-radius:12px;background:#e8f8ef;border:1px solid #b7e3cc;text-align:center;color:#116b48;font-size:1.12em;font-weight:900">✓ تم قبول التذكرة بنجاح</div>';
+            } else {
+              ticketUploadStatus.style.color = '#116b48';
+              ticketUploadStatus.innerHTML = '<div style="padding:18px;border-radius:12px;background:#e8f8ef;border:1px solid #b7e3cc;text-align:center;color:#116b48;font-size:1.12em;font-weight:900">✓ تم قبول التذكرة بنجاح</div>';
+            }
           } catch (err) {
             uploadTicketBtn.disabled = false;
             uploadTicketBtn.textContent = 'رفع التذكرة';
