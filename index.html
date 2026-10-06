@@ -450,13 +450,22 @@ button { font-family:inherit; }
       var dateText = bookingDate ? new Date(bookingDate + 'T00:00:00').toLocaleDateString('ar-EG') : 'غير متاح';
       var createdText = createdAt ? new Date(createdAt).toLocaleString('ar-EG') : 'غير متاح';
       var isPaid = String(booking.payment_status || '').toLowerCase() === 'paid';
+      // موعد المقابلة المحدد: 11/10/2026 الساعة 12:00 ظهرًا بتوقيت مصر.
+      // بعد حلول الموعد يتم إخفاء بيانات الموعد من نتيجة الاستعلام.
+      var interviewDeadline = new Date('2026-10-11T12:00:00+03:00');
+      var interviewVisible = new Date() < interviewDeadline;
       result.innerHTML =
         '<div><strong>رقم الحجز:</strong> ' + escapeHtml(booking.code || code) + '</div>' +
         '<div><strong>الاسم بالكامل:</strong> ' + escapeHtml(booking.name || 'غير متاح') + '</div>' +
         '<div><strong>الخدمة:</strong> ' + escapeHtml(serviceName || 'غير متاح') + '</div>' +
         '<div><strong>رقم جواز السفر / الرقم القومي:</strong> ' + escapeHtml(booking.identity || identity) + '</div>' +
         '<div><strong>رقم الهاتف:</strong> ' + escapeHtml(booking.phone || 'غير متاح') + '</div>' +
-        '<div><strong>تاريخ الموعد:</strong> ' + escapeHtml(dateText) + '</div>' +
+        (interviewVisible ?
+          '<div style="margin:14px 0;padding:16px;border-radius:12px;background:#e8f1ff;color:#173b5b;border:1px solid #bfd3ef;line-height:1.8;text-align:center">' +
+          '<div style="font-size:1.05em;font-weight:900;margin-bottom:6px">📅 موعد المقابلة</div>' +
+          '<div><strong>التاريخ:</strong> 11/10/2026</div>' +
+          '<div><strong>الساعة:</strong> 12:00 PM</div>' +
+          '</div>' : '') +
         '<div><strong>حالة الحجز:</strong> ' + escapeHtml(booking.status || 'غير متاح') + '</div>' +
         '<div><strong>حالة السداد:</strong> <span id="paymentStatusText">' + (isPaid ? 'تم دفع المبلغ' : 'يرجى دفع المبلغ') + '</span></div>' +
         '<div><strong>تاريخ تسجيل الحجز:</strong> ' + escapeHtml(createdText) + '</div>' +
