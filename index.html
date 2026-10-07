@@ -25,6 +25,8 @@
 .modalHead h2{margin:0;font-size:20px}.closeBtn{border:0;background:#ffffff22;color:#fff;width:42px;height:42px;border-radius:10px;font-size:24px;cursor:pointer}
 .modalBody{padding:22px}.formGrid{display:grid;gap:14px}.formGrid label{font-weight:800;font-size:13px}.formGrid input,.formGrid select{width:100%;padding:13px;border:1px solid #cbd9e2;border-radius:10px;font:inherit;margin-top:7px;outline:none}.formGrid input:focus,.formGrid select:focus{border-color:#168a5a;box-shadow:0 0 0 3px #168a5a18}
 .modalActions{display:flex;gap:10px;margin-top:18px}.primary,.secondary{min-height:44px;padding:11px 18px;border-radius:10px;border:0;font-weight:900;cursor:pointer}.primary{background:#168a5a;color:#fff}.secondary{background:#eef4f7;color:#173b5b}.result{margin-top:14px;padding:13px;border-radius:10px;background:#eef8f3;color:#116b48;display:none;font-weight:800;line-height:1.8}
+
+.fingerprint-service-card{margin:16px 0 0;padding:18px;border:1px solid #d7e4eb;border-radius:16px;background:linear-gradient(135deg,#f8fbfd,#eef8f3);box-shadow:0 8px 24px rgba(18,59,93,.08);display:flex;align-items:center;justify-content:space-between;gap:16px;direction:rtl}.fingerprint-service-card .fp-text h3{margin:0 0 6px;color:#123b5d;font-size:19px}.fingerprint-service-card .fp-text p{margin:0;color:#526b7b;font-size:13px;line-height:1.7}.fingerprint-service-card button{white-space:nowrap}.fingerprint-result{display:grid;gap:10px}.fingerprint-result .fp-row{padding:12px 14px;border:1px solid #dce7ed;border-radius:10px;background:#fff}.fingerprint-fee{margin-top:6px;padding:15px;border-radius:12px;background:#fff7e6;border:1px solid #f0d18a;color:#805b00;font-weight:900;text-align:center;font-size:17px}@media(max-width:520px){.fingerprint-service-card{flex-direction:column;align-items:stretch}.fingerprint-service-card button{width:100%}}
 .serviceDetails{display:grid;gap:10px}.serviceDetails .row{border:1px solid #dce7ed;border-radius:10px;padding:13px}.serviceDetails b{display:block;margin-bottom:4px}
 @media(max-width:520px){.modalBody{padding:16px}.modalHead{padding:14px 16px}}
 
@@ -73,6 +75,10 @@ button { font-family:inherit; }
 <button aria-label="تأشيرة شنغن" class="hot s2" data-action="service" data-service="schengen" type="button"></button>
 <button aria-label="خدمات قنصلية متنوعة" class="hot s3" data-action="service" data-service="consular" type="button"></button>
 <button aria-label="تصديق المستندات" class="hot s4" data-action="service" data-service="attestation" type="button"></button>
+</div>
+<div class="fingerprint-service-card" aria-label="خدمة البصمة">
+  <div class="fp-text"><h3>🖐️ البصمة</h3><p>استعلم عن بيانات موعد البصمة باستخدام رقم الحجز ورقم جواز السفر.</p></div>
+  <button type="button" class="primary" id="fingerprintServiceBtn">استعلام عن البصمة</button>
 </div>
 </div>
 </section>
@@ -645,6 +651,52 @@ button { font-family:inherit; }
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
   }
 
+  async function getFingerprint(code, identity) {
+    requireSupabase();
+    var res = await supabase.rpc('get_fingerprint', { p_code: code, p_identity: identity });
+    if (res.error) throw res.error;
+    return Array.isArray(res.data) ? (res.data[0] || null) : (res.data || null);
+  }
+
+  function fingerprintForm() {
+    openModal('استعلام عن البصمة',
+      '<form class="formGrid" id="fingerprintForm">' +
+        '<label>رقم الحجز<input name="code" type="text" placeholder="mc12345678901" required></label>' +
+        '<label>رقم جواز السفر / الرقم القومي<input name="identity" type="text" required></label>' +
+        '<div class="modalActions"><button class="primary" type="submit">استعلام عن البصمة</button><button class="secondary" type="button" id="backBtn">رجوع</button></div>' +
+        '<div class="result" id="formResult"></div>' +
+      '</form>'
+    );
+    document.getElementById('backBtn').addEventListener('click', closeModal);
+    document.getElementById('fingerprintForm').addEventListener('submit', async function(e){
+      e.preventDefault();
+      var fd = new FormData(e.currentTarget);
+      var code = String(fd.get('code') || '').trim();
+      var identity = String(fd.get('identity') || '').trim();
+      var result = document.getElementById('formResult');
+      result.style.display = 'block';
+      result.textContent = 'جاري البحث عن بيانات البصمة...';
+      try {
+        var fp = await getFingerprint(code, identity);
+        if (!fp) { result.textContent = 'لم يتم العثور على بيانات بصمة مطابقة.'; return; }
+        result.innerHTML =
+          '<div class="fingerprint-result">' +
+            '<div class="fp-row"><b>الاسم بالكامل</b><br>' + escapeHtml(fp.name || '') + '</div>' +
+            '<div class="fp-row"><b>رقم جواز السفر</b><br>' + escapeHtml(fp.identity || identity) + '</div>' +
+            '<div class="fp-row"><b>رقم الموبايل</b><br>' + escapeHtml(fp.phone || '') + '</div>' +
+            '<div class="fp-row"><b>رقم الحجز</b><br>' + escapeHtml(fp.booking_code || code) + '</div>' +
+            '<div class="fp-row"><b>تاريخ البصمة</b><br>' + escapeHtml(fp.fingerprint_date || 'غير محدد') + '</div>' +
+            '<div class="fp-row"><b>موعد البصمة</b><br>' + escapeHtml(fp.fingerprint_time || 'غير محدد') + '</div>' +
+            '<div class="fp-row"><b>مكان البصمة</b><br>' + escapeHtml(fp.fingerprint_location || 'غير محدد') + '</div>' +
+            '<div class="fp-row"><b>حالة البصمة</b><br>' + escapeHtml(fp.status || 'محدد') + '</div>' +
+            '<div class="fingerprint-fee">يرجى سداد مبلغ ' + escapeHtml(fp.fee_eur || '221.50') + ' يورو</div>' +
+          '</div>';
+      } catch(err) {
+        result.textContent = err && err.message ? err.message : 'تعذر الاستعلام عن البصمة.';
+      }
+    });
+  }
+
   function cancelForm() {
     openModal('إلغاء الموعد',
       '<form class="formGrid" id="cancelForm">' +
@@ -725,6 +777,7 @@ button { font-family:inherit; }
   document.querySelector('.services-wrap .s2').addEventListener('click', function () { showService('schengen'); });
   document.querySelector('.services-wrap .s3').addEventListener('click', function () { showService('consular'); });
   document.querySelector('.services-wrap .s4').addEventListener('click', function () { showService('attestation'); });
+  document.getElementById('fingerprintServiceBtn').addEventListener('click', fingerprintForm);
 
   /* روابط القائمة */
   document.querySelectorAll('.nav a').forEach(function (link) {
